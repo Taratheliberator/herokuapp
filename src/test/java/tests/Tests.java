@@ -4,26 +4,42 @@ import io.qameta.allure.Step;
 import org.junit.Assert;
 
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.*;
 
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.interactions.Actions;
+import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.Select;
+import org.openqa.selenium.support.ui.WebDriverWait;
+import org.opentest4j.TestAbortedException;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class Tests {
     private WebDriver driver;
     private Actions action;
+    private int attempt = 0;
+    private static boolean allElementsFound = false;
 
-    @BeforeEach
+    private static boolean isPageLoaded = false;
+
+
+    @BeforeAll
     public void setUp() {
 
         driver = new ChromeDriver();
@@ -33,169 +49,259 @@ public class Tests {
 
     }
 
-    @Test
-    @Step("Проверка страницы с чекбоксами")
-    public void testCheckboxes() {
-        // Открываем страницу с чекбоксами
-        driver.get("https://the-internet.herokuapp.com/checkboxes");
+    @ParameterizedTest
+    @ValueSource(strings = {"12", "21"})
+    void testCheckboxesOrder(String order) {
 
-        // Находим чекбоксы
+        openCheckboxesPage();
+        clickCheckboxesInOrder(order);
+
+    }
+
+
+    @Step("Открытие страницы с чекбоксами")
+    private void openCheckboxesPage() {
+        driver.get("https://the-internet.herokuapp.com/checkboxes");
+    }
+
+    @Step("Клик по чекбоксам в порядке: {order}")
+    private void clickCheckboxesInOrder(String order) {
         WebElement checkbox1 = driver.findElement(By.xpath("//form[@id='checkboxes']/input[1]"));
         WebElement checkbox2 = driver.findElement(By.xpath("//form[@id='checkboxes']/input[2]"));
 
-        // Изменяем состояние чекбоксов
-        if (!checkbox1.isSelected()) {
-            checkbox1.click();
+        for (char ch : order.toCharArray()) {
+            if (ch == '1') {
+                clickCheckboxAndVerify(checkbox1, "1");
+            } else if (ch == '2') {
+                clickCheckboxAndVerify(checkbox2, "2");
+            }
         }
-        if (checkbox2.isSelected()) {
-            checkbox2.click();
-        }
-
-        // Выводим в консоль состояние атрибута checked
-        System.out.println("Checkbox 1: " + checkbox1.getAttribute("checked"));
-        System.out.println("Checkbox 2: " + checkbox2.getAttribute("checked"));
     }
+
+    @Step("Клик по чекбоксу {checkboxOrder} и проверка его состояния")
+    private void clickCheckboxAndVerify(WebElement checkbox, String checkboxOrder) {
+        checkbox.click();
+        System.out.println("Checkbox " + checkboxOrder + ": " + (checkbox.isSelected() ? "checked" : "not checked"));
+        assertEquals(checkbox.isSelected(), (checkbox.getAttribute("checked") != null));
+    }
+
+
     @Test
-    @Step("Проверка страницы Dropdown ")
     public void selectDropdownOptions() {
+
+        openDropdownPage();
+        selectOption("1");
+        verifySelectedOption("Option 1");
+        selectOption("2");
+        verifySelectedOption("Option 2");
+
+    }
+
+
+    @Step("Открытие страницы с выпадающим списком")
+    private void openDropdownPage() {
         driver.get("https://the-internet.herokuapp.com/dropdown");
+    }
+
+    @Step("Выбор опции {option}")
+    private void selectOption(String option) {
         WebElement dropdownElement = driver.findElement(By.id("dropdown"));
         Select dropdown = new Select(dropdownElement);
-
-        // Выбираем первую опцию
-        dropdown.selectByValue("1");
-        System.out.println("Выбранная опция: " + dropdown.getFirstSelectedOption().getText());
-
-        // Выбираем вторую опцию
-        dropdown.selectByValue("2");
-        System.out.println("Выбранная опция: " + dropdown.getFirstSelectedOption().getText());
+        dropdown.selectByValue(option);
+        String selectedOptionText = dropdown.getFirstSelectedOption().getText();
+        System.out.println("Выбранная опция: " + selectedOptionText);
     }
-    @Test
-    @Step("Проверка страницы Disappearing Elements")
+
+    @Step("Проверка выбранной опции: {expectedOptionText}")
+    private void verifySelectedOption(String expectedOptionText) {
+        WebElement dropdownElement = driver.findElement(By.id("dropdown"));
+        Select dropdown = new Select(dropdownElement);
+        String actualOptionText = dropdown.getFirstSelectedOption().getText();
+        Assertions.assertEquals(expectedOptionText, actualOptionText);
+    }
+
+
+    @RepeatedTest(10)
     public void testDisappearingElements() {
-        int maxAttempts = 10;
-        int attempt = 0;
-        boolean allElementsFound = false;
-
-        while (attempt < maxAttempts && !allElementsFound) {
-            driver.get("https://the-internet.herokuapp.com/disappearing_elements");
-
-            // Найти все элементы меню
-            List<WebElement> menuItems = driver.findElements(By.xpath("//div[@class='example']/ul/li/a"));
-
-            if (menuItems.size() == 5) {
-                // Если найдено 5 элементов, установить флаг успешного поиска и вывести в консоль их текст
-                allElementsFound = true;
-                System.out.println("Попытка " + (attempt+1) + ": Найдено все 5 элементов");
-                for (WebElement item : menuItems) {
-                    System.out.println(item.getText());
-                }
-            } else {
-                // Увеличить счетчик попыток, если не найдено 5 элементов
-                System.out.println("Попытка " + (attempt + 1) + ": Найдено " + menuItems.size() + " элементов");
-                attempt++;
-            }
+        if (allElementsFound) {
+            throw new TestAbortedException("Все элементы уже найдены; пропуск этой итерации.");
         }
 
-        // Проверить, были ли найдены все элементы. Если нет, завершить тест с ошибкой.
-        Assert.assertTrue("Не удалось найти все 5 элементов за " + maxAttempts + " попыток", allElementsFound);
-    }
-    @Test
-    @Step("Проверка страницы Inputs")
-    public void testInputField() {
-        // Генерация случайного числа от 1 до 10000
-        int randomNumber = new Random().nextInt(10000) + 1;
+        attempt++;
+        openPage("https://the-internet.herokuapp.com/disappearing_elements");
+        List<WebElement> menuItems = findMenuItems();
 
-        // Переход на страницу с полем ввода
+        if (menuItems.size() == 5) {
+            allElementsFound = true;
+            menuItems.forEach(item -> System.out.println(item.getText()));
+        }
+
+        if (attempt == 10 && !allElementsFound) {
+            Assertions.fail("Не удалось найти все 5 элементов за 10 попыток");
+        }
+    }
+
+    @Step("Открытие страницы {url}")
+    private void openPage(String url) {
+        driver.get(url);
+    }
+
+    @Step("Поиск пунктов меню на странице")
+    private List<WebElement> findMenuItems() {
+        return driver.findElements(By.xpath("//div[@class='example']/ul/li/a"));
+    }
+
+    @TestFactory
+    Collection<DynamicTest> inputFieldTests() {
+        // Генерируем 10 случайных чисел для тестов
+        Random random = new Random();
+        Stream<DynamicTest> positiveTests = random.ints(10, 1, 10001).mapToObj(
+                randomNumber -> DynamicTest.dynamicTest("Тест ввода числа " + randomNumber, () -> {
+                    testInput(randomNumber);
+                })
+        );
+
+        // Набор негативных тестовых данных
+        Stream<DynamicTest> negativeTests = Stream.of("abc", "!@#", " 123 ", "123a").map(
+                input -> DynamicTest.dynamicTest("Негативный тест для: \"" + input + "\"", () -> {
+                    testInvalidInput(input);
+                })
+        );
+
+
+        return Stream.concat(positiveTests, negativeTests).collect(Collectors.toList());
+    }
+
+    @Step("Проверка ввода числа {number} в поле ввода")
+    private void testInput(int number) {
         driver.get("https://the-internet.herokuapp.com/inputs");
-
-        // Находим элемент поля ввода по его типу
         WebElement inputField = driver.findElement(By.xpath("//input[@type='number']"));
-
-        // Вводим сгенерированное число в поле ввода
-        inputField.sendKeys(String.valueOf(randomNumber));
-
-        // Получаем и выводим в консоль значение из поля ввода
-        System.out.println("Введенное значение: " + inputField.getAttribute("value"));
+        inputField.sendKeys(String.valueOf(number));
+        Assertions.assertEquals(String.valueOf(number), inputField.getAttribute("value"), "Введенное значение не соответствует ожидаемому");
     }
-    @Test
-    @Step("Проверка страницы Hovers")
-    public void testHover() {
-        driver.get("https://the-internet.herokuapp.com/hovers");
 
-        // Находим все элементы картинок
+    @Step("Проверка ввода невалидных данных \"{input}\" в поле ввода")
+    private void testInvalidInput(String input) {
+        driver.get("https://the-internet.herokuapp.com/inputs");
+        WebElement inputField = driver.findElement(By.xpath("//input[@type='number']"));
+        inputField.sendKeys(input);
+        // Для невалидных данных поле должно быть пустым или содержать только часть валидного ввода (например, числа из строки с числами и буквами)
+        boolean isValid = inputField.getAttribute("value").matches("^\\d*$");
+        Assertions.assertTrue(isValid, "Поле ввода содержит невалидные данные");
+    }
+
+    static Stream<Object[]> hoverData() {
+        return Stream.of(
+                new Object[]{1, "name: user1"},
+                new Object[]{2, "name: user2"},
+                new Object[]{3, "name: user3"}
+        );
+    }
+
+    @ParameterizedTest
+    @MethodSource("hoverData")
+    public void testHoverOnEachFigure(int figureIndex, String expectedText) {
+        openPage("https://the-internet.herokuapp.com/hovers");
+        hoverAndCheckText(figureIndex, expectedText);
+    }
+
+
+    @Step("Наведение на элемент {figureIndex} и проверка текста")
+    private void hoverAndCheckText(int figureIndex, String expectedText) {
         List<WebElement> figures = driver.findElements(By.className("figure"));
+        WebElement figure = figures.get(figureIndex - 1);
+        action.moveToElement(figure).perform();
 
-        for (WebElement figure : figures) {
-            // Используем Actions для наведения курсора на элемент
-            action.moveToElement(figure).perform();
-
-            // Находим элемент с информацией, которая появляется при наведении
-            WebElement info = figure.findElement(By.className("figcaption"));
-
-            // Выводим текст элемента в консоль
-            System.out.println(info.getText());
-        }
+        WebElement info = figure.findElement(By.className("figcaption"));
+        String actualText = info.getText();
+        System.out.println("Actual Text: " + actualText);
+        assertTrue(actualText.contains(expectedText), "Text does not match!");
     }
-    @Test
-    @Step("Проверка страницы Notification Message")
-    public void testNotificationMessage() {
-        driver.get("https://the-internet.herokuapp.com/notification_message_rendered");
 
-        boolean actionSuccessful = false;
-        while (!actionSuccessful) {
-            // Нажимаем на ссылку для загрузки нового сообщения
-            driver.findElement(By.linkText("Click here")).click();
+    @RepeatedTest(5)
+    public void testNotificationMessage(RepetitionInfo repetitionInfo) {
+        if (!isPageLoaded) {
+            driver.get("https://the-internet.herokuapp.com/notification_message_rendered");
+            isPageLoaded = true;
+        }
 
-            // Проверяем текст всплывающего уведомления
-            WebElement message = driver.findElement(By.id("flash"));
-            String messageText = message.getText();
+        driver.findElement(By.linkText("Click here")).click();
+        WebElement message = new WebDriverWait(driver, 5)
+                .until(ExpectedConditions.visibilityOfElementLocated(By.id("flash")));
+        String messageText = message.getText().trim();
 
-            if (messageText.contains("Action successful")) {
-                System.out.println("Success message received: " + messageText);
-                actionSuccessful = true;
-            } else {
-                // Если сообщение не содержит "Action successful", ищем и нажимаем на кнопку закрытия уведомления
-                System.out.println("Received another message, trying again: " + messageText);
-                if (messageText.contains("Action unsuccesful, please try again")) {
-                    driver.findElement(By.cssSelector("#flash .close")).click();
+        // Проверка, содержит ли сообщение "Action successful"
+        boolean isActionSuccessful = messageText.contains("Action successful");
+
+        // Выводим полученное сообщение в консоль
+        System.out.println("Message received: " + messageText);
+
+
+        Assertions.assertTrue(isActionSuccessful, "The notification message was not successful. Message received: " + messageText);
+
+
+    }
+
+
+    @TestFactory
+    Stream<DynamicTest> testAddRemoveElementsDynamically() {
+        List<int[]> parameters = List.of(
+                new int[]{2, 1},
+                new int[]{5, 2},
+                new int[]{1, 3}
+        );
+
+        return parameters.stream().map(params -> DynamicTest.dynamicTest(
+                "Test with add " + params[0] + " elements and remove " + params[1],
+                () -> {
+                    openTestPage();
+                    addElements(params[0]);
+                    verifyNumberOfDeleteButtonsAfterAdding(params[0]);
+                    removeElements(params[1]);
+                    verifyNumberOfDeleteButtonsAfterRemoval(params[0] - params[1]);
                 }
-            }
-        }
+        ));
     }
 
-    @Test
-    @Step("Проверка страницы Add/Remove Elements")
-    public void testAddRemoveElements() {
+    @Step("Открытие тестовой страницы")
+    private void openTestPage() {
         driver.get("https://the-internet.herokuapp.com/add_remove_elements/");
+    }
 
-        // Нажимаем на кнопку "Add Element" 5 раз
+    @Step("Добавление {0} элементов")
+    private void addElements(int numberOfElementsToAdd) {
         WebElement addButton = driver.findElement(By.xpath("//button[text()='Add Element']"));
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < numberOfElementsToAdd; i++) {
             addButton.click();
-            // Выводим в консоль текст появившегося элемента
-            System.out.println("Added: " + (i + 1) + " Delete button(s)");
-        }
-
-        // Находим все кнопки "Delete" и нажимаем на три из них
-        List<WebElement> deleteButtons = driver.findElements(By.className("added-manually"));
-        for (int i = 0; i < 3; i++) {
-            if (i < deleteButtons.size()) {
-                deleteButtons.get(i).click();
-                System.out.println("Deleted: " + (i + 1) + " button");
-            }
-        }
-
-        // После удаления трех кнопок, выводим в консоль оставшееся количество и тексты кнопок "Delete"
-        deleteButtons = driver.findElements(By.className("added-manually"));
-        System.out.println("Remaining Delete buttons: " + deleteButtons.size());
-        for (WebElement button : deleteButtons) {
-            System.out.println(button.getText());
         }
     }
+
+    @Step("Проверка количества кнопок 'Удалить' после добавления. Ожидается: {0}")
+    private void verifyNumberOfDeleteButtonsAfterAdding(int expectedNumber) {
+        List<WebElement> deleteButtons = driver.findElements(By.className("added-manually"));
+        assertEquals(expectedNumber, deleteButtons.size(), "Количество кнопок 'Удалить' не соответствует ожидаемому после добавления.");
+    }
+
+    @Step("Удаление {0} элементов")
+    private void removeElements(int numberOfElementsToRemove) {
+        List<WebElement> deleteButtons = driver.findElements(By.className("added-manually"));
+        for (int i = 0; i < numberOfElementsToRemove; i++) {
+            if (!deleteButtons.isEmpty()) {
+                deleteButtons.get(i).click();
+                deleteButtons = driver.findElements(By.className("added-manually")); // Обновляем список элементов
+            }
+        }
+    }
+
+    @Step("Проверка количества кнопок 'Удалить' после удаления. Ожидается: {0}")
+    private void verifyNumberOfDeleteButtonsAfterRemoval(int expectedNumberAfterRemoval) {
+        List<WebElement> deleteButtons = driver.findElements(By.className("added-manually"));
+        assertEquals(Math.max(expectedNumberAfterRemoval, 0), deleteButtons.size(), "Количество кнопок 'Удалить' не соответствует ожидаемому после удаления.");
+    }
+
+
     @Test
-    @Step("Проверка страницы Status Codes")
-    public void testStatusCodes() {
+    public void testEachStatusCodeLink() {
         driver.get("https://the-internet.herokuapp.com/status_codes");
 
         String[] statusCodes = {"200", "301", "404", "500"};
@@ -208,14 +314,17 @@ public class Tests {
             WebElement message = driver.findElement(By.cssSelector(".example p"));
             System.out.println("Страница со статусом " + statusCode + ": " + message.getText());
 
+            // Проверяем, что URL содержит нужный код статуса как часть пути
+            assertTrue(driver.getCurrentUrl().contains("/status_codes/" + statusCode), "Переход был осуществлен на страницу с некорректным статусом.");
+
             // Возвращаемся на предыдущую страницу, чтобы кликнуть на следующий статус-код
             driver.navigate().back();
         }
     }
 
-    @AfterEach
+    @AfterAll
     public void tearDown() {
-        // Закрываем браузер после выполнения теста
+
         if (driver != null) {
             driver.quit();
         }
